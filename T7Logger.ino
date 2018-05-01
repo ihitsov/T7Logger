@@ -10,72 +10,6 @@ void pp_soft_wdt_stop();    // close software watchdog
 #include <Wire.h>
 #include <TimeLib.h>
 
-boolean CalMode=0; // Calibration mode boolean for the TPMS
-
-//unsigned char SIDBuf0[6][8]={
-//{69, 150, 129, 67, 104, 101, 99, 107},//Check
-//{4, 150, 129, 32, 116, 105, 114, 101},//_tire
-//{3, 150, 129, 0, 0, 0, 0, 0}, //__
-//{2, 150, 130, 70, 72, 65, 73, 73}, //press
-//{1, 150, 130, 75, 72, 65, 73, 21}, //ures!
-//{0, 150, 130, 0, 0, 0, 0, 0} //__
-//};
-//
-//unsigned char SIDBuf1[6][8]={
-//{69, 150, 129, 84, 80, 77, 83, 32}, //TPMS_
-//{4, 150, 129, 99, 97, 108, 105, 98}, //calib
-//{3, 150, 129, 45, 0, 0, 0, 0}, //-
-//{2, 150, 130, 114, 97, 116, 105, 111},//ratio
-//{1, 150, 130, 110, 32, 109, 111, 100},//n mod
-//{0, 150, 130, 101, 0, 0, 0, 0} //e_
-//};
-//        
-//
-//unsigned char SIDBuf2[6][8]={
-//{69, 150, 129, 84, 80, 77, 83, 32}, //TPMS_
-//{4, 150, 129, 114, 101, 97, 100, 121}, //ready
-//{3, 150, 129, 33, 0, 0, 0, 0},//!
-//{2, 150, 130, 0, 0, 0, 0, 0},
-//{1, 150, 130, 0, 0, 0, 0, 0},
-//{0, 150, 130, 0, 0, 0, 0, 0}
-//};
-//
-//unsigned char SIDBuf[6][8]={
-//{69, 150, 129, 0, 0, 0, 0, 0},
-//{4, 150, 129, 0, 0, 0, 0, 0}, 
-//{3, 150, 129, 0, 0, 0, 0, 0},
-//{2, 150, 130, 0, 0, 0, 0, 0},
-//{1, 150, 130, 0, 0, 0, 0, 0},
-//{0, 150, 130, 0, 0, 0, 0, 0}
-//};
-//unsigned char SIDMystBuf[3][8]={
-//  {0, 50, 0, 0, 0, 0, 0, 0},
-//  {1, 255, 0, 0, 0, 0, 0, 0},
-//  {2, 255, 0, 0, 0, 0, 0, 0}
-//};
-//int SIDMystID=872;
-//
-////int SIDBufID=824;
-//int SIDBufID=831;
-//
-////unsigned char SIDDispOn[8]={31, 1, 5, 18,  0, 0, 0, 0};
-////unsigned char SIDDispOff[8]={31, 0, 5, 8,  0, 0, 0, 0};
-//unsigned char SIDDispOn[8]={33, 0, 3, 50,  0, 0, 0, 0};
-//unsigned char SIDDispOff[8]={33, 0, 255, 50,  0, 0, 0, 0};
-//
-//int SIDDispID=856;
-//
-////unsigned char SIDDispReq[8]={17, 0, 3, 25,  0, 0, 0, 0};
-//unsigned char SIDDispReq[8]={33, 0, 255, 50,  0, 0, 0, 0
-//};
-//
-//int SIDDispReqID=856;
-//
-//unsigned char SIDBeep[8]={128, 4, 0, 0, 0, 0, 0, 0};
-//int SIDBeepID=1072;
-//
-//boolean Send2SID[2]={0,0};
-
 const int MPU_addr = 0x68; // I2C address of the MPU-6050
 int16_t AcX, AcY, AcZ, Tmp, GyX, GyY, GyZ;
 int16_t Accell[4] = {0};
@@ -264,33 +198,6 @@ void setup()
   //  float   multiplier = 3.0F;    /* ADS1015 @ +/- 6.144V gain (12-bit results) */
 
 
-  // Read TPMS calibration data
-   union c_tag {
-   byte b[4]; 
-   float fval;
-   } c;
-  byte eepromsize=12;
-  EEPROM.begin(eepromsize);
-  delay(10);
-  int j=0;
-  int k=0;
-  for (int i=0;i<eepromsize;i++){
-    c.b[j]=EEPROM.read(i);
-    j++;
-    if (j==4)
-    {
-      Serial.println("");
-      Serial.print("c.fval:");//Debugging if the eeprom value of the Cals are OK
-      Serial.println(c.fval,6);
-      if (fabs(c.fval-1)>0.05){
-      c.fval=1.0;
-      Serial.println("Ignoring the TPMS calibration data");// if eeprom is empty or full of random data, ignore the calibration
-      } 
-      j=0;
-      Cal[k]=c.fval;
-      k++;
-    }
-  }
   
   WiFi.forceSleepBegin();                  // turn off ESP8266 RF
   delay(1);                                // give RF section time to shutdown
@@ -305,7 +212,7 @@ void setup()
 
   
 
-  while (CAN_OK != CAN.begin(CAN_500KBPS, MCP_16MHz))              // init can bus : baudrate = 500k // Go to C:\Program Files (x86)\Arduino\libraries\CAN_BUS_Shield-master\mcp_can_dfs.h and change line:   byte begin(byte speedset, const byte clockset = MCP_16MHz);   to      byte begin(byte speedset, const byte clockset);     // init can
+  while (CAN_OK != CAN.begin(CAN_500KBPS, MCP_16MHz))              // init can bus : baudrate = 500k // Go to C:\Program Files (x86)\Arduino\libraries\CAN_BUS_Shield-master\mcp_can.h and change line:   byte begin(byte speedset, const byte clockset = MCP_16MHz);   to      byte begin(byte speedset, const byte clockset);     // init can
 
   {
     Serial.println("CAN BUS no es bueno!"); // Ref to AvE
