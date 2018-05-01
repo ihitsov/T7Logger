@@ -10,6 +10,7 @@ void pp_soft_wdt_stop();    // close software watchdog
 #include <Wire.h>
 #include <TimeLib.h>
 
+
 const int MPU_addr = 0x68; // I2C address of the MPU-6050
 int16_t AcX, AcY, AcZ, Tmp, GyX, GyY, GyZ;
 int16_t Accell[4] = {0};
@@ -131,8 +132,8 @@ int ReceiveFilters[5]={0};
 
 signed long          Values[MaxSizeLog] = {0};
 
-const unsigned int SSizeLog = 24;
-String         SName[SSizeLog]  =  {"RPM", "TPS", "SPD", "Teng", "Patm", "FL", "FR", "RL", "RR", "BrkPress", "StAng", "180_3", "180_4", "120_0", "120_1", "120_2", "120_3", "120_5", "120_6", "1a0_3", "1a0_4", "1a0_6", "1a0_7"};
+const unsigned int SSizeLog = 5;
+String         SName[SSizeLog]  =  {"RPM", "TPS", "SPD", "Teng", "Patm"};
 long  unsigned         SValues[SSizeLog];
 
 const unsigned int AnLog = 5;
@@ -197,7 +198,6 @@ void setup()
 
   //  float   multiplier = 3.0F;    /* ADS1015 @ +/- 6.144V gain (12-bit results) */
 
-
   
   WiFi.forceSleepBegin();                  // turn off ESP8266 RF
   delay(1);                                // give RF section time to shutdown
@@ -212,7 +212,7 @@ void setup()
 
   
 
-  while (CAN_OK != CAN.begin(CAN_500KBPS, MCP_16MHz))              // init can bus : baudrate = 500k // Go to C:\Program Files (x86)\Arduino\libraries\CAN_BUS_Shield-master\mcp_can.h and change line:   byte begin(byte speedset, const byte clockset = MCP_16MHz);   to      byte begin(byte speedset, const byte clockset);     // init can
+  while (CAN_OK != CAN.begin(CAN_500KBPS, MCP_16MHz))              // init can bus : baudrate = 500k // Go to C:\Program Files (x86)\Arduino\libraries\CAN_BUS_Shield-master\mcp_can_dfs.h and change line:   byte begin(byte speedset, const byte clockset = MCP_16MHz);   to      byte begin(byte speedset, const byte clockset);     // init can
 
   {
     Serial.println("CAN BUS no es bueno!"); // Ref to AvE
@@ -221,11 +221,10 @@ void setup()
 
   Serial.println("CAN BUS Shield init ok!");
 
-//  for (int i=0;i<MaxSizeLog;i++){ // Determine the size of the log 
-//    if (Addr[i]==0){break;}
-//    SizeLog++;
-//  }
-SizeLog=0; // Temporary make the logging with only 1 variable to debug the TPMS
+  for (int i=0;i<MaxSizeLog;i++){ // Determine the size of the log 
+    if (Addr[i]==0){break;}
+    SizeLog++;
+  }
 }
 
 
@@ -237,11 +236,6 @@ void printDigits(int digits) {
     Serial.print('0');
   Serial.print(digits);
 }
-
-   union c_tag {
-   byte b[4]; 
-   float fval;
-   } c;
    
 union u_tag {
   byte b[3];
@@ -536,215 +530,11 @@ void WaitForEngStatus(){
       else{EngStatus=0;}
  }
 }
-void SIDMessages(){ // Function to re-send preiodical messages to SID
-  static long ElapsedSIDPacketTime;
-  static long ElapsedMysteryPacketTime;  
-  static int i;
-  static int j;
-  if ((millis() - ElapsedSIDPacketTime) > 100 && Send2SID[1]!=0) {
-      if (i==0){
-      CAN.sendMsgBuf(SIDDispID, 0, 8, SIDDispOn);  // Send the messages to SID
-//      bufprint(SIDDispOn,8);
-      }
-      if (i>0){
-      CAN.sendMsgBuf(SIDBufID, 0, 8, SIDBuf[i-1]);  // Send the messages to SID
-//      bufprint(SIDBuf[i-1],8);
-      }
-      i++;
-      if (i==7){
-        i=0;
-        ElapsedSIDPacketTime = millis(); // if its done, reset the timer
-      }
-  }
-//    if ((millis() - ElapsedMysteryPacketTime) > 0 && Send2SID[1]!=0) { // Seems like this package is sent whenewer open sid is active, doing this in an attempt to fight the bug where the SID mesasges are displayed but are fighting with the radio messages
-//          CAN.sendMsgBuf(SIDMystID, 0, 8, SIDMystBuf[j]);  // Send the messages to SID
-//          bufprint(SIDMystBuf[j],8);
-//          j++;
-//          if (j==3){
-//            ElapsedMysteryPacketTime = millis(); // if its done, reset the timer
-//            j=0;
-//          }
-//    }
-    
-//          CAN.sendMsgBuf(SIDDispID, 0, 8, SIDDispOn);  // Send command to SID to display the above messages
-}
 
-void FillSIDBuf(unsigned char TempBuf[6][8]){
-  for (int i=0;i<6;i++){
-    for (int j=0; j<8;j++){
-      SIDBuf[i][j]=TempBuf[i][j];
-    }
-  }
-}
-void TPMS(int FL_UF,int FR_UF,int RL_UF,float RR) // get ther unfiltered values, RR is reference, so no need to cal it
-{
-  if (CalMode==0){
-  float FL = (float)FL_UF/(Cal[0]*Cal[2]);
-  float FR = (float)FR_UF/Cal[2];
-  float RL = (float)RL_UF/Cal[1];
-  float TPMSTol=0.011; // 0.01 should be about 0.5 bar difference on 17in wh., set a bit higher to allow for measurement errors and to prevent false alarms
-  float TPMSTestRange=0.03;
-  static long VTScoreOp;
-  static long VTScoreOpSlow;
-  static int TPMSCount;
-  static int TPMSCountSlow;
-  static float TPMSScore0; // Sum offset front L/F
-  static float TPMSScore1; // Sum offset back L/F
-  static float TPMSScore2; // Sum offset front to back axle
-  static float TPMSScore3; // Sum offset front to back axle
-  static float TPMSScore4; // Sum offset front to back axle
-  static float TPMSScore5; // Sum offset front to back axle
-  static float PrevRR;
-  static boolean TPMSTripped;
-  if (FL>300){ // Around 20 km/h
-    if (fabs(RR-PrevRR)<10 &&(fabs(1-(float)FL/RL)<TPMSTestRange && fabs(1-(float)RL/RR)<TPMSTestRange)){ // if the front or the rear axle is going straight and the speed gradient is no larger than (5km/h)/sec
-       Serial.print("FL:");
-       Serial.print(FL);
-       Serial.print(", FR:");
-       Serial.print(FR);
-       Serial.print(", RL:");
-       Serial.print(RL);
-       Serial.print(", RR:");
-       Serial.println(RR);
-       TPMSScore0+=1-(float)(FL+FR)/(RR+RL); // Ratio front to rear tires, fast eval, should be OK even in a slight turn
-       TPMSScore1+=(float)FL/FR-(float)RL/RR;// Difference in turning between the front and rear tires, fast eval, should be OK even in a slight turn
-       TPMSScore2+=1-(float)FL/RL; // Ratio of left tires, fast eval, should be OK even in a slight turn
-       TPMSScore3+=1-(float)FR/RR; // Ratio of right tires, fast eval, should be OK even in a slight turn
-       TPMSScore4+=1-(float)FL/FR;// average turning of the front tires, slow eval because its sensitive to turning(catches both ties on one side to be underinflated)
-       TPMSScore5+=1-(float)RL/RR;// average turning of the rear tires, slow eval  because its sensitive to turning (catches both ties on one side to be underinflated)      
-       VTScoreOp+=RR;
-       VTScoreOpSlow+=RR; 
-       TPMSCount++;
-       TPMSCountSlow++;
-    }
-    PrevRR=RR;  
-  }
-  if (VTScoreOpSlow>9e6){
-    if ((fabs((float)TPMSScore4/TPMSCountSlow))>TPMSTol || fabs((float)(TPMSScore5/TPMSCountSlow))>TPMSTol){
-      TPMSTripped=1;
-    }
-        // Clean up for the next measurement window
-        Serial.print("; TPMSScore4:");
-        Serial.print((float)TPMSScore4/TPMSCountSlow,6);
-        Serial.print("; TPMSScore5:");
-        Serial.println((float)TPMSScore5/TPMSCountSlow,6);
-        TPMSScore4=0;
-        TPMSScore5=0;
-        VTScoreOpSlow=0;
-        TPMSCountSlow=0;
-  }
-  if (VTScoreOp>1.5e6){// Define measurement window of about 0.5km on 17in wheels
-        if ((fabs((float)TPMSScore0/TPMSCount))>TPMSTol || fabs((float)(TPMSScore1/TPMSCount))>TPMSTol || fabs((float)(TPMSScore2/TPMSCount)>TPMSTol) || fabs((float)(TPMSScore3/TPMSCount))>TPMSTol){
-           TPMSTripped=1;
-        } 
-        Serial.print("TPMSScore0:");
-        Serial.print((float)TPMSScore0/TPMSCount,6);
-        Serial.print("; TPMSScore1:");
-        Serial.print((float)TPMSScore1/TPMSCount,6);
-        Serial.print("; TPMSScore2:");
-        Serial.print((float)TPMSScore2/TPMSCount,6);
-        Serial.print("; TPMSScore3:");
-        Serial.println((float)TPMSScore3/TPMSCount,6);
-
-
-        // Clean up for the next measurement window
-        VTScoreOp=0;
-        TPMSScore0=0;
-        TPMSScore1=0;
-        TPMSScore2=0;
-        TPMSScore3=0;
-        TPMSCount=0;
-    }
-      if (TPMSTripped==1){
-        TPMSTripped=0;
-        // Send a beep and SID Text
-        CAN.sendMsgBuf(SIDBeepID, 0, 8, SIDBeep);  // Send a chime to SID
-        Serial.println("Underinflated Tire!!!");
-        FillSIDBuf(SIDBuf0);
-
-        Send2SID[0]=0; // Send messages from 0 to 2
-        Send2SID[1]=5; // Send messages from 0 to 5
-    }
-  }
- 
-
-  if (CalMode==1){
-    float CalTol=0.05;
-    static long VTScore;// VTScore is the time*velocity of the wheel, in this way we can define the calibration window as path travelled, instead of simple sample number taken
-    static long CalSum[4];
-    if (RR>500 && (fabs(1-FL_UF/FR_UF)<CalTol && fabs(1-RL_UF/RR)<CalTol)){ // if the front and the rear axles are going straight-ish average the wheelspeeds
-      static long CalScoreLimit=15e6;
-      if (VTScore<CalScoreLimit){ //3e6 is 5km with 17in wheels // 2000 wheel RPS is obtained at 120km/h, 50 FPS, hence 2000*50*3600/120
-      VTScore+=RR;
-      CalSum[0]+=FL_UF;
-      CalSum[1]+=FR_UF;
-      CalSum[2]+=RL_UF;
-      CalSum[3]+=RR;
-      }
-      if (VTScore>CalScoreLimit){ 
-        Cal[0]=(float)CalSum[0]/CalSum[1];
-        Cal[1]=(float)CalSum[2]/CalSum[3];
-        Cal[2]=(float)CalSum[1]/CalSum[3];
-
-          for (int i=0; i<3; i++){
-          for (int j=0; j<4; j++){
-          c.fval=Cal[i];
-          EEPROM.write(i*4+j,c.b[j]);
-          Serial.println(i*4+j);
-          Serial.println(Cal[i]);
-          }
-        }
-       EEPROM.commit();
-        //delete temp calibration in case another one is done
-        for (byte i=0; i<3;i++){CalSum[i]=0;}
-        VTScore=0;
-        CalMode=0;
-        // Send a beep and SID Text
-        CAN.sendMsgBuf(SIDBeepID, 0, 8, SIDBeep);  // Send a chime to SID
-        Serial.println("Sending chime to SID for Cal complete"); // debugging
-        FillSIDBuf(SIDBuf2); 
-//        Serial.println(Cal[0],6); // debugging
-//        Serial.println(Cal[1],6); // debugging
-//        Serial.println(Cal[2],6); // debugging
-
-        Send2SID[0]=0; // Send messages from 0 to 5
-        Send2SID[1]=5; // Send messages from 0 to 5
-        }
-    }
-  }
-}
 void ReceiveCheck(){
   if (CAN_MSGAVAIL == CAN.checkReceive())           // check if data is coming
     {
       CAN.readMsgBufID(&canID, &len, buf);   // read data,  len: data length, buf: data buf
-      static long ElapsedSIDSendTime;
-     if ((millis() - ElapsedSIDSendTime) > 40 && Send2SID[1]!=0) {
-          SIDMessages();
-          ElapsedSIDSendTime = millis(); // if its time to poll the accelerometer do it
-        }
-      if (canID == 768) {
-        SValues[6] = (buf[0] << 8 | buf[1] << 0) ; //Speed FL
-        SValues[7] = (buf[2] << 8 | buf[3] << 0) ; //Speed FR
-        SValues[8] = (buf[4] << 8 | buf[5] << 0) ; //Speed RL
-        SValues[9] = (buf[6] << 8 | buf[7] << 0) ; //Speed RR
-
-        TPMS(buf[0] << 8 | buf[1] << 0,buf[2] << 8 | buf[3] << 0,buf[4] << 8 | buf[5] << 0,buf[6] << 8 | buf[7] << 0);
-      }
-      if (canID == 656){
-        if (buf[5]==128){ // clear button pressed
-          Send2SID[1]=0;
-          CAN.sendMsgBuf(SIDDispID, 0, 8, SIDDispOff);  // Initialize the T7 data communication
-          Serial.println("Clear button pressed");
-        }
-        if (buf[5]==160){ // SID clear+down pressed, start calibration
-          CalMode=1;
-          Serial.println("TPMS Calibration started!"); 
-          FillSIDBuf(SIDBuf1);
-        
-        Send2SID[0]=0; // Send messages from 0 to 2
-        Send2SID[1]=5; // Send messages from 0 to 5
-        }
-      }
       for (int i=0;i<5;i++){ // print messages that are interesting according to the filter
         if (canID==ReceiveFilters[i]){ReceivePrint(canID,len,buf);}
       }
@@ -794,14 +584,6 @@ unsigned char MessageWait(int ID)
         SValues[2] = (buf[3] << 8 | buf[4] << 0) / 10; //Speed
       }
 
-      if (canID == 768) {
-        SValues[6] = (buf[0] << 8 | buf[1] << 0) ; //Speed FL
-        SValues[7] = (buf[2] << 8 | buf[3] << 0) ; //Speed FR
-        SValues[8] = (buf[4] << 8 | buf[5] << 0) ; //Speed RL
-        SValues[9] = (buf[6] << 8 | buf[7] << 0) ; //Speed RR
-
-        TPMS(buf[0] << 8 | buf[1] << 0,buf[2] << 8 | buf[3] << 0,buf[4] << 8 | buf[5] << 0,buf[6] << 8 | buf[7] << 0);
-      }
 
       if (canID == 288) {
         SValues[10] = buf[7] ; //Brake pressure
@@ -820,21 +602,7 @@ unsigned char MessageWait(int ID)
         SValues[12] = buf[3] ; //180_3 Unknown
         SValues[13] = buf[4] ; // 180_4 Unknown
       }
-      if (canID == 656){
-        if (buf[5]==128){ // clear button pressed
-          Send2SID[1]=0;
-          CAN.sendMsgBuf(SIDDispID, 0, 8, SIDDispOff);  // Initialize the T7 data communication
-          Serial.println("Clear button pressed");
-        }
-        if (buf[5]==160){ // SID clear+down pressed, start calibration
-          CalMode=1;
-          Serial.println("TPMS Calibration started!");
-          FillSIDBuf(SIDBuf1);
-        
-        Send2SID[0]=0; // Send messages from 0 to 5
-        Send2SID[1]=5; // Send messages from 0 to 5
-        }
-      }
+
       if (canID == 801) {
         DigFreqVal[0] = (buf[1] << 8) | buf[0];
         DigFreqVal[1] = (buf[3] << 8) | buf[2];
@@ -1082,15 +850,9 @@ while (true) {
           Gyro();
           ElapsedGyroTime = millis(); // if its time to poll the accelerometer do it
         }
-      static long ElapsedSIDSendTime;
-     if ((millis() - ElapsedSIDSendTime) > 5 && Send2SID[1]!=0) {
-          SIDMessages();
-          ElapsedSIDSendTime = millis(); // if its time to poll the accelerometer do it
-        }
            
       // Serial printing
-      // Temp disable serial output of the logger to debug the TPMS
-//      SerialPrint(0);
+      SerialPrint(0);
     }
 
     if (Problem == 0 && SizeLog!=0)
