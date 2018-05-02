@@ -132,8 +132,8 @@ int ReceiveFilters[5]={0};
 
 signed long          Values[MaxSizeLog] = {0};
 
-const unsigned int SSizeLog = 5;
-String         SName[SSizeLog]  =  {"RPM", "TPS", "SPD", "Teng", "Patm"};
+const unsigned int SSizeLog = 24;
+String         SName[SSizeLog]  =  {"RPM", "TPS", "SPD", "Teng", "Patm", "FL", "FR", "RL", "RR", "BrkPress", "StAng", "180_3", "180_4", "120_0", "120_1", "120_2", "120_3", "120_5", "120_6", "1a0_3", "1a0_4", "1a0_6", "1a0_7"};
 long  unsigned         SValues[SSizeLog];
 
 const unsigned int AnLog = 5;
@@ -579,7 +579,28 @@ unsigned char MessageWait(int ID)
         SValues[1] = buf[5] ;
 
       }
+      if (canID == 768) {
+        SValues[6] = (buf[0] << 8 | buf[1] << 0) ; //Speed FL
+        SValues[7] = (buf[2] << 8 | buf[3] << 0) ; //Speed FR
+        SValues[8] = (buf[4] << 8 | buf[5] << 0) ; //Speed RL
+        SValues[9] = (buf[6] << 8 | buf[7] << 0) ; //Speed RR
+      }
+      if (canID == 288) {
+        SValues[10] = buf[7] ; //Brake pressure
+        SValues[11] = buf[4] ; // Steering angle
 
+        SValues[14] = buf[0] ; // Unknown
+        SValues[15] = buf[1] ; // Unknown
+        SValues[16] = buf[2] ; // Unknown
+        SValues[17] = buf[3] ; // Unknown
+        SValues[18] = buf[5] ; // Unknown
+        SValues[19] = buf[6] ; // Unknown
+      }
+      if (canID == 384) {
+        SValues[12] = buf[3] ; //180_3 Unknown
+        SValues[13] = buf[4] ; // 180_4 Unknown
+      }
+            
       if (canID == 928) {
         SValues[2] = (buf[3] << 8 | buf[4] << 0) / 10; //Speed
       }
